@@ -20,7 +20,6 @@ fn main() {
     // local
     if node == 0 {
         config.address(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 9)));
-        config.destination(IpAddr::V4(Ipv4Addr::new(157, 230, 144, 32)));
         config.mtu(1500);
         config.up();
     } else {
