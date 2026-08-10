@@ -1,0 +1,8 @@
+[package]
+name = "borealis"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dotenvy = "0.15.7"
+tun = "0.8.14"
