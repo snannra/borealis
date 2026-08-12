@@ -162,13 +162,15 @@ fn main() {
             .unwrap()
             .encapsulate(&buffer[..num_bytes], &mut encap_dst_buffer)
         {
-            TunnResult::Done => {}
+            TunnResult::Done => {
+                println!("encap: Done (queued?)");
+            }
             TunnResult::Err(e) => {
                 println!("Error: {e:?}");
             }
             TunnResult::WriteToNetwork(written_buf) => {
                 println!(
-                    "encap: sending {} encrypted bytes to peer",
+                    "encap: writetonetwork {} encrypted bytes to peer",
                     written_buf.len()
                 );
                 socket.send_to(written_buf, peer_socket.clone()).unwrap();
