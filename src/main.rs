@@ -1,7 +1,7 @@
 use boringtun::noise::TunnResult;
 use dotenvy;
 use serde_json;
-use std::net::{IpAddr, Ipv4Addr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
 use std::thread::spawn;
 use tun::{self, Configuration};
@@ -88,12 +88,17 @@ fn main() {
 
     let device = tun::Device::new(&config).unwrap();
 
+    let learned_peer: Arc<Mutex<Option<SocketAddr>>> = Arc::new(Mutex::new(None));
+
     let socket_clone = Arc::clone(&socket);
+    let learned_peer_recv = Arc::clone(&learned_peer);
+    let learned_peer_send = Arc::clone(&learned_peer);
     spawn(move || {
         loop {
             let (bytes_read, src_addr) = socket_clone.recv_from(&mut read_from).unwrap();
             println!("Read in {} bytes.", bytes_read);
             println!("{:?}", &read_from[..bytes_read]);
+            *learned_peer_recv.lock().unwrap() = Some(src_addr);
 
             match tunn_protocol.lock().unwrap().decapsulate(
                 Some(src_addr.ip()),
@@ -173,7 +178,9 @@ fn main() {
                     "encap: writetonetwork {} encrypted bytes to peer",
                     written_buf.len()
                 );
-                socket.send_to(written_buf, peer_socket.clone()).unwrap();
+                if let Some(dest) = *learned_peer_send.lock().unwrap() {
+                    socket.send_to(written_buf, dest).unwrap();
+                }
             }
             TunnResult::WriteToTunnelV4(_, _) => {}
             TunnResult::WriteToTunnelV6(_, _) => {}
