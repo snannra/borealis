@@ -2,6 +2,8 @@ use boringtun::noise::TunnResult;
 use dotenvy;
 use serde_json;
 use std::net::{IpAddr, Ipv4Addr, UdpSocket};
+use std::sync::{Arc, Mutex};
+use std::thread::spawn;
 use tun::{self, Configuration};
 
 fn main() {
@@ -33,14 +35,11 @@ fn main() {
             .as_str(),
     )
     .unwrap();
-    // let public_key: Vec<u8> = serde_json::from_str(
-    //     std::env::var("PUBLIC_KEY")
-    //         .unwrap_or("Node not defined".to_string())
-    //         .parse::<String>()
-    //         .unwrap()
-    //         .as_str(),
-    // )
-    // .unwrap();
+
+    let peer_socket = std::env::var("PEER_SOCKET")
+        .expect("Couldn't unwrap peer socket")
+        .parse::<String>()
+        .unwrap();
 
     let private_arr: [u8; 32] = static_private
         .try_into()
@@ -66,56 +65,53 @@ fn main() {
         config.up();
     }
 
-    let socket = UdpSocket::bind(ip).unwrap();
+    let socket = Arc::new(UdpSocket::bind(ip).unwrap());
 
-    let mut buffer = [0u8; 1500];
-    let mut dst_buffer = [0u8; 1500];
+    let mut decap_dst_buffer = [0u8; 1500];
+    let mut encap_dst_buffer = [0u8; 1500];
 
     let mut read_from = [0u8; 1500];
 
-    let mut tunn = boringtun::noise::Tunn::new(my_secret, peer_public, None, Some(25), 0, None);
+    let tunn_protocol = Arc::new(Mutex::new(boringtun::noise::Tunn::new(
+        my_secret,
+        peer_public,
+        None,
+        Some(25),
+        0,
+        None,
+    )));
 
-    if node == 0 {
-        let device = tun::Device::new(&config).unwrap();
+    let tunn = tunn_protocol.clone();
+
+    let device = tun::Device::new(&config).unwrap();
+
+    let socket_clone = Arc::clone(&socket);
+    spawn(move || {
         loop {
-            let num_bytes = device
-                .recv(&mut buffer)
-                .expect("Failed to read into buffer");
-            println!("Read in {} bytes.", num_bytes);
-            println!("{:?}", &buffer[..num_bytes]);
-            match tunn.encapsulate(&buffer[..num_bytes], &mut dst_buffer) {
-                TunnResult::Done => {}
-                TunnResult::Err(e) => {
-                    println!("Error: {e:?}");
-                }
-                TunnResult::WriteToNetwork(written_buf) => {
-                    socket.send_to(written_buf, "157.230.144.32:51820").unwrap();
-                }
-                TunnResult::WriteToTunnelV4(_, _) => {}
-                TunnResult::WriteToTunnelV6(_, _) => {}
-            }
-        }
-    } else {
-        loop {
-            let (bytes_read, src_addr) = socket.recv_from(&mut read_from).unwrap();
+            let (bytes_read, src_addr) = socket_clone.recv_from(&mut read_from).unwrap();
             println!("Read in {} bytes.", bytes_read);
             println!("{:?}", &read_from[..bytes_read]);
-            match tunn.decapsulate(
+
+            match tunn_protocol.lock().unwrap().decapsulate(
                 Some(src_addr.ip()),
                 &read_from[..bytes_read],
-                &mut dst_buffer,
+                &mut decap_dst_buffer,
             ) {
                 TunnResult::Done => {}
                 TunnResult::Err(e) => {
                     println!("Error: {e:?}");
                 }
                 TunnResult::WriteToNetwork(buf) => {
-                    socket.send_to(buf, src_addr).unwrap();
+                    socket_clone.send_to(buf, src_addr).unwrap();
                     loop {
                         let mut tmp = [0u8; 1500];
-                        match tunn.decapsulate(None, &[], &mut tmp) {
+                        match tunn_protocol
+                            .lock()
+                            .unwrap()
+                            .decapsulate(None, &[], &mut tmp)
+                        {
                             TunnResult::WriteToNetwork(b) => {
-                                socket.send_to(b, src_addr).unwrap();
+                                socket_clone.send_to(b, src_addr).unwrap();
                             }
                             _ => break,
                         }
@@ -126,6 +122,31 @@ fn main() {
                 }
                 TunnResult::WriteToTunnelV6(_, _) => {}
             }
+        }
+    });
+
+    let mut buffer = [0u8; 1500];
+
+    loop {
+        let num_bytes = device
+            .recv(&mut buffer)
+            .expect("Failed to read into buffer");
+        println!("Read in {} bytes.", num_bytes);
+        println!("{:?}", &buffer[..num_bytes]);
+        match tunn
+            .lock()
+            .unwrap()
+            .encapsulate(&buffer[..num_bytes], &mut encap_dst_buffer)
+        {
+            TunnResult::Done => {}
+            TunnResult::Err(e) => {
+                println!("Error: {e:?}");
+            }
+            TunnResult::WriteToNetwork(written_buf) => {
+                socket.send_to(written_buf, peer_socket.clone()).unwrap();
+            }
+            TunnResult::WriteToTunnelV4(_, _) => {}
+            TunnResult::WriteToTunnelV6(_, _) => {}
         }
     }
 }
