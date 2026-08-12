@@ -83,6 +83,9 @@ fn main() {
 
     let tunn = tunn_protocol.clone();
 
+    let tunn_timer = tunn_protocol.clone(); // another Arc clone
+    let socket_timer = Arc::clone(&socket);
+
     let device = tun::Device::new(&config).unwrap();
 
     let socket_clone = Arc::clone(&socket);
@@ -97,11 +100,17 @@ fn main() {
                 &read_from[..bytes_read],
                 &mut decap_dst_buffer,
             ) {
-                TunnResult::Done => {}
+                TunnResult::Done => {
+                    println!("decap: DONE");
+                }
                 TunnResult::Err(e) => {
-                    println!("Error: {e:?}");
+                    println!("decap Error: {e:?}");
                 }
                 TunnResult::WriteToNetwork(buf) => {
+                    println!(
+                        "decap: WriteToNetwork {} bytes - sending response",
+                        buf.len()
+                    );
                     socket_clone.send_to(buf, src_addr).unwrap();
                     loop {
                         let mut tmp = [0u8; 1500];
@@ -118,9 +127,24 @@ fn main() {
                     }
                 }
                 TunnResult::WriteToTunnelV4(buf, _addr) => {
-                    println!("{:?}", buf);
+                    println!("decap: DECRYPTED PACKET {:?}", buf);
                 }
                 TunnResult::WriteToTunnelV6(_, _) => {}
+            }
+        }
+    });
+
+    let timer_socket = peer_socket.clone();
+
+    spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            let mut tmp = [0u8; 1500];
+            match tunn_timer.lock().unwrap().update_timers(&mut tmp) {
+                TunnResult::WriteToNetwork(buf) => {
+                    socket_timer.send_to(buf, timer_socket.clone()).unwrap();
+                }
+                _ => {}
             }
         }
     });
