@@ -167,6 +167,10 @@ fn main() {
                 println!("Error: {e:?}");
             }
             TunnResult::WriteToNetwork(written_buf) => {
+                println!(
+                    "encap: sending {} encrypted bytes to peer",
+                    written_buf.len()
+                );
                 socket.send_to(written_buf, peer_socket.clone()).unwrap();
             }
             TunnResult::WriteToTunnelV4(_, _) => {}
