@@ -36,6 +36,11 @@ fn main() {
     )
     .unwrap();
 
+    let peer_socket = std::env::var("PEER_SOCKET")
+        .expect("Couldn't unwrap peer socket")
+        .parse::<String>()
+        .unwrap();
+
     let private_arr: [u8; 32] = static_private
         .try_into()
         .expect("private key must be 32 bytes");
@@ -88,6 +93,8 @@ fn main() {
     let socket_clone = Arc::clone(&socket);
     let learned_peer_recv = Arc::clone(&learned_peer);
     let learned_peer_send = Arc::clone(&learned_peer);
+    let learned_peer_timer = Arc::clone(&learned_peer);
+    let peer_socket_timer = peer_socket.clone();
     spawn(move || {
         loop {
             let (bytes_read, src_addr) = socket_clone.recv_from(&mut read_from).unwrap();
@@ -134,17 +141,21 @@ fn main() {
         }
     });
 
-    let timer_socket = Arc::clone(&learned_peer);
-
     spawn(move || {
         loop {
             std::thread::sleep(std::time::Duration::from_millis(250));
             let mut tmp = [0u8; 1500];
             match tunn_timer.lock().unwrap().update_timers(&mut tmp) {
                 TunnResult::WriteToNetwork(buf) => {
-                    socket_timer
-                        .send_to(buf, timer_socket.lock().unwrap().unwrap())
-                        .unwrap();
+                    let dest = if node == 0 {
+                        peer_socket_timer.parse::<SocketAddr>().unwrap()
+                    } else {
+                        match *learned_peer_timer.lock().unwrap() {
+                            Some(d) => d,
+                            None => continue,
+                        }
+                    };
+                    socket_timer.send_to(buf, dest).unwrap();
                 }
                 _ => {}
             }
@@ -175,9 +186,15 @@ fn main() {
                     "encap: writetonetwork {} encrypted bytes to peer",
                     written_buf.len()
                 );
-                if let Some(dest) = *learned_peer_send.lock().unwrap() {
-                    socket.send_to(written_buf, dest).unwrap();
-                }
+                let dest = if node == 0 {
+                    peer_socket.parse::<SocketAddr>().unwrap()
+                } else {
+                    match *learned_peer_send.lock().unwrap() {
+                        Some(d) => d,
+                        None => continue,
+                    }
+                };
+                socket.send_to(written_buf, dest).unwrap();
             }
             TunnResult::WriteToTunnelV4(_, _) => {}
             TunnResult::WriteToTunnelV6(_, _) => {}
