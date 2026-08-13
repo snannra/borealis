@@ -36,11 +36,6 @@ fn main() {
     )
     .unwrap();
 
-    let peer_socket = std::env::var("PEER_SOCKET")
-        .expect("Couldn't unwrap peer socket")
-        .parse::<String>()
-        .unwrap();
-
     let private_arr: [u8; 32] = static_private
         .try_into()
         .expect("private key must be 32 bytes");
@@ -139,7 +134,7 @@ fn main() {
         }
     });
 
-    let timer_socket = peer_socket.clone();
+    let timer_socket = Arc::clone(&learned_peer);
 
     spawn(move || {
         loop {
@@ -147,7 +142,9 @@ fn main() {
             let mut tmp = [0u8; 1500];
             match tunn_timer.lock().unwrap().update_timers(&mut tmp) {
                 TunnResult::WriteToNetwork(buf) => {
-                    socket_timer.send_to(buf, timer_socket.clone()).unwrap();
+                    socket_timer
+                        .send_to(buf, timer_socket.lock().unwrap().unwrap())
+                        .unwrap();
                 }
                 _ => {}
             }
