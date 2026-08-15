@@ -188,6 +188,8 @@ impl Tunnel {
             return;
         };
 
+        println!("UDP send: {} bytes to {dest}", packet.len());
+
         self.socket.send_to(packet, dest).expect("UDP send failed");
     }
 }
