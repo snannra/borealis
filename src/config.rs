@@ -4,7 +4,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 pub struct DeviceConfig {
     pub node: u32,
     pub bind_socket: SocketAddr,
-    pub peer_socket: SocketAddr,
+    pub peer_socket: Option<SocketAddr>,
     pub tunnel_ip: Ipv4Addr,
     pub private_key: [u8; 32],
     pub peer_public_key: [u8; 32],
@@ -19,15 +19,20 @@ impl DeviceConfig {
             .parse::<u32>()
             .expect("NODE must be integer");
 
-        let bind_socket = std::env::var("PUBLIC_SOCKET")
+        let bind_socket = std::env::var("BIND_SOCKET")
             .expect("PUBLIC_IP missing")
             .parse::<SocketAddr>()
             .expect("PUBLIC_IP must be socket addr");
 
-        let peer_socket = std::env::var("PEER_SOCKET")
-            .expect("PEER_SOCKET missing")
-            .parse::<SocketAddr>()
-            .expect("PEER_SOCKET must be socket addr");
+        let peer_socket = match std::env::var("PEER_SOCKET") {
+            Ok(sock_val) => {
+                let peer_sock = sock_val
+                    .parse::<SocketAddr>()
+                    .expect("PEER_SOCKET must be socket addr");
+                Some(peer_sock)
+            }
+            Err(_) => None,
+        };
 
         let private: Vec<u8> =
             serde_json::from_str(&std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY missing"))

@@ -6,9 +6,9 @@ pub struct PeerEndpoint {
 }
 
 impl PeerEndpoint {
-    pub fn new(addr: SocketAddr) -> Self {
+    pub fn new(addr: Option<SocketAddr>) -> Self {
         Self {
-            addr: Mutex::new(Some(addr)),
+            addr: Mutex::new(addr),
         }
     }
 
