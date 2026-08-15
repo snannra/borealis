@@ -1,6 +1,6 @@
 use crate::peer::PeerEndpoint;
 use boringtun::noise::{Tunn, TunnResult};
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::net::UdpSocket;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -51,9 +51,15 @@ impl Tunnel {
         let mut wg_buf = [0u8; BUF_SIZE];
 
         loop {
-            let n = reader
-                .recv_timeout(&mut tun_buf, Duration::from_secs(1))
-                .expect("failed reading TUN");
+            let n = match reader.recv_timeout(&mut tun_buf, Duration::from_secs(1)) {
+                Ok(n) => n,
+                Err(error)
+                    if matches!(error.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) =>
+                {
+                    continue;
+                }
+                Err(error) => panic!("failed reading TUN: {error}"),
+            };
 
             println!("TUN -> WG: {n} bytes");
 
