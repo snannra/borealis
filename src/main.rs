@@ -16,7 +16,7 @@ fn main() {
 
     let (tun_reader, tun_writer) = device.split();
 
-    let socket = transport::bind_udp(config.peer_socket);
+    let socket = transport::bind_udp(config.bind_socket);
 
     let peer = PeerEndpoint::new(config.peer_socket);
 
