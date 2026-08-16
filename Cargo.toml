@@ -1,9 +1,18 @@
-[package]
-name = "borealis"
+[workspace]
+members = [
+    "crates/node",
+    "crates/protocol",
+    "services/coordinator",
+]
+default-members = ["crates/node"]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+[workspace.dependencies]
+borealis-protocol = { path = "crates/protocol" }
 boringtun = "0.7.1"
 dotenvy = "0.15.7"
 getrandom = "0.4.3"

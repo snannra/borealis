@@ -89,7 +89,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "borealis"
+name = "borealis-coordinator"
+version = "0.1.0"
+dependencies = [
+ "borealis-protocol",
+]
+
+[[package]]
+name = "borealis-node"
 version = "0.1.0"
 dependencies = [
  "boringtun",
@@ -100,6 +107,10 @@ dependencies = [
  "tracing-subscriber",
  "tun",
 ]
+
+[[package]]
+name = "borealis-protocol"
+version = "0.1.0"
 
 [[package]]
 name = "boringtun"

@@ -210,14 +210,26 @@ Send traffic to the configured peer address. The server owns `10.0.0.10`, not ar
 ## Project structure
 
 ```text
-src/
-├── main.rs        Application composition and startup
-├── config.rs      Environment configuration and tunnel addressing
-├── peer.rs        Mutable peer endpoint state
-├── transport.rs   UDP socket binding
-├── tun_device.rs  TUN interface creation
-└── tunnel.rs      Packet processing and protocol timer loops
+crates/
+├── node/                    Existing tunnel node application
+│   └── src/
+│       ├── main.rs          Application composition and startup
+│       ├── config.rs        Environment configuration and tunnel addressing
+│       ├── peer.rs          Mutable peer endpoint state
+│       ├── transport.rs     UDP socket binding
+│       ├── tun_device.rs    TUN interface creation
+│       └── tunnel.rs        Packet processing and protocol timer loops
+└── protocol/                Shared control-plane contract (scaffold)
+    └── src/lib.rs
+services/
+└── coordinator/             Independently runnable coordination service
+    ├── migrations/          Future PostgreSQL migrations
+    └── src/main.rs
 ```
+
+The root is a Cargo workspace. `cargo run` continues to run the node through
+the workspace's default member. Run the coordinator scaffold independently
+with `cargo run -p borealis-coordinator`.
 
 ## Current limitations
 
