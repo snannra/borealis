@@ -59,6 +59,8 @@ impl Tunnel {
             workers.push(("tun-to-udp", handle));
         }
 
+        tracing::info!(workers = workers.len(), "tunnel workers started");
+
         loop {
             if let Some(index) = workers.iter().position(|(_, handle)| handle.is_finished()) {
                 let (name, handle) = workers.swap_remove(index);
@@ -91,7 +93,7 @@ impl Tunnel {
                 Err(error) => panic!("failed reading TUN: {error}"),
             };
 
-            println!("TUN -> WG: {n} bytes");
+            tracing::debug!(bytes = n, "read packet from TUN");
 
             let output = {
                 let mut tunn = self.tunn.lock().unwrap();
@@ -99,11 +101,11 @@ impl Tunnel {
                 match tunn.encapsulate(&tun_buf[..n], &mut wg_buf) {
                     TunnResult::WriteToNetwork(buf) => Some(buf.to_vec()),
                     TunnResult::Done => {
-                        println!("WG queued packet");
+                        tracing::debug!("WireGuard queued packet");
                         None
                     }
                     TunnResult::Err(e) => {
-                        eprintln!("encapsulation error: {e:?}");
+                        tracing::error!(error = ?e, "failed to encapsulate packet");
                         None
                     }
                     _ => None,
@@ -125,7 +127,7 @@ impl Tunnel {
                 .recv_from(&mut udp_buf)
                 .expect("UDP receive failed");
 
-            println!("UDP -> WG: {n} bytes from {src}");
+            tracing::debug!(bytes = n, source = %src, "received UDP packet");
 
             self.process_udp_packet(&udp_buf[..n], src, &mut writer)
         }
@@ -158,13 +160,13 @@ impl Tunnel {
 
             match result {
                 TunnResult::WriteToNetwork(buf) => {
-                    println!("WG -> UDP: {} bytes", buf.len());
+                    tracing::debug!(bytes = buf.len(), "WireGuard produced UDP packet");
 
                     self.send_udp(buf);
                 }
 
                 TunnResult::WriteToTunnelV4(buf, _) => {
-                    println!("WG -> TUN IPv4: {} bytes", buf.len());
+                    tracing::debug!(bytes = buf.len(), "WireGuard produced IPv4 TUN packet");
 
                     writer
                         .write_all(buf)
@@ -172,7 +174,7 @@ impl Tunnel {
                 }
 
                 TunnResult::WriteToTunnelV6(buf, _) => {
-                    println!("WG -> TUN IPv6: {} bytes", buf.len());
+                    tracing::debug!(bytes = buf.len(), "WireGuard produced IPv6 TUN packet");
 
                     writer
                         .write_all(buf)
@@ -184,7 +186,7 @@ impl Tunnel {
                 }
 
                 TunnResult::Err(e) => {
-                    eprintln!("decapsulation error: {e:?}");
+                    tracing::error!(error = ?e, "failed to decapsulate packet");
                     break;
                 }
             }
@@ -204,7 +206,7 @@ impl Tunnel {
                     TunnResult::WriteToNetwork(buf) => Some(buf.to_vec()),
 
                     TunnResult::Err(e) => {
-                        eprintln!("timer error: {e:?}");
+                        tracing::error!(error = ?e, "WireGuard timer update failed");
                         None
                     }
                     _ => None,
@@ -212,7 +214,7 @@ impl Tunnel {
             };
 
             if let Some(packet) = packet {
-                println!("TIMER -> UDP: {} bytes", packet.len());
+                tracing::debug!(bytes = packet.len(), "WireGuard timer produced UDP packet");
                 self.send_udp(&packet);
             }
         }
@@ -220,11 +222,11 @@ impl Tunnel {
 
     fn send_udp(&self, packet: &[u8]) {
         let Some(dest) = self.peer.get() else {
-            eprintln!("cannot send packet: peer endpoint unknown");
+            tracing::warn!("cannot send packet because peer endpoint is unknown");
             return;
         };
 
-        println!("UDP send: {} bytes to {dest}", packet.len());
+        tracing::debug!(bytes = packet.len(), destination = %dest, "sending UDP packet");
 
         self.socket.send_to(packet, dest).expect("UDP send failed");
     }

@@ -10,7 +10,19 @@ use peer::PeerEndpoint;
 use tunnel::Tunnel;
 
 fn main() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+
     let config = DeviceConfig::from_env();
+    tracing::info!(
+        node = config.node,
+        bind_address = %config.bind_socket,
+        peer_endpoint = ?config.peer_socket,
+        tunnel_ip = %config.tunnel_ip,
+        "loaded tunnel configuration"
+    );
 
     let device = tun_device::create(&config);
 
@@ -29,7 +41,7 @@ fn main() {
     let tunnel = Tunnel::new(tunn, socket, peer);
 
     if let Err(error) = tunnel.run(tun_reader, tun_writer) {
-        eprintln!("tunnel stopped: {error}");
+        tracing::error!(%error, "tunnel stopped");
         std::process::exit(1);
     }
 }

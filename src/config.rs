@@ -1,4 +1,3 @@
-use dotenvy;
 use std::net::{Ipv4Addr, SocketAddr};
 
 pub struct DeviceConfig {

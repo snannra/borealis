@@ -13,5 +13,9 @@ pub fn create(config: &DeviceConfig) -> Device {
         .mtu(TUN_MTU)
         .up();
 
-    Device::new(&tun_config).expect("failed to create TUN device")
+    let device = Device::new(&tun_config).expect("failed to create TUN device");
+
+    tracing::info!(address = %config.tunnel_ip, mtu = TUN_MTU, "created TUN device");
+
+    device
 }
