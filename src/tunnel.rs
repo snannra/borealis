@@ -1,7 +1,7 @@
 use crate::peer::PeerEndpoint;
 use boringtun::noise::{Tunn, TunnResult};
 use std::io::{ErrorKind, Write};
-use std::net::UdpSocket;
+use std::net::{SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -97,28 +97,34 @@ impl Tunnel {
 
             println!("UDP -> WG: {n} bytes from {src}");
 
-            self.peer.update(src);
-
-            self.process_udp_packet(&udp_buf[..n], src.ip(), &mut writer)
+            self.process_udp_packet(&udp_buf[..n], src, &mut writer)
         }
     }
 
-    pub fn process_udp_packet(&self, packet: &[u8], src_ip: std::net::IpAddr, writer: &mut Writer) {
+    pub fn process_udp_packet(&self, packet: &[u8], src: SocketAddr, writer: &mut Writer) {
         let mut first = true;
 
         loop {
             let mut dst = [0u8; BUF_SIZE];
+            let is_initial_decapsulation = first;
 
             let result = {
                 let mut tunn = self.tunn.lock().unwrap();
 
                 if first {
                     first = false;
-                    tunn.decapsulate(Some(src_ip), packet, &mut dst)
+                    tunn.decapsulate(Some(src.ip()), packet, &mut dst)
                 } else {
                     tunn.decapsulate(None, &[], &mut dst)
                 }
             };
+
+            if is_initial_decapsulation
+                && !matches!(&result, TunnResult::Err(_))
+                && !is_cookie_challenge(packet, &result)
+            {
+                self.peer.update(src);
+            }
 
             match result {
                 TunnResult::WriteToNetwork(buf) => {
@@ -192,4 +198,12 @@ impl Tunnel {
 
         self.socket.send_to(packet, dest).expect("UDP send failed");
     }
+}
+
+fn is_cookie_challenge(packet: &[u8], result: &TunnResult<'_>) -> bool {
+    const HANDSHAKE_INIT_TYPE: [u8; 4] = [1, 0, 0, 0];
+    const COOKIE_REPLY_SIZE: usize = 64;
+
+    packet.starts_with(&HANDSHAKE_INIT_TYPE)
+        && matches!(result, TunnResult::WriteToNetwork(buf) if buf.len() == COOKIE_REPLY_SIZE)
 }
