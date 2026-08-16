@@ -24,26 +24,56 @@ impl Tunnel {
         }
     }
 
-    pub fn run(self, tun_reader: Reader, tun_writer: Writer) {
+    pub fn run(self, tun_reader: Reader, tun_writer: Writer) -> Result<(), String> {
         let tunnel = Arc::new(self);
+        let mut workers = Vec::new();
 
         {
             let tunnel = Arc::clone(&tunnel);
 
-            thread::spawn(move || {
-                tunnel.udp_to_tun(tun_writer);
-            });
+            let handle = thread::Builder::new()
+                .name("udp-to-tun".into())
+                .spawn(move || tunnel.udp_to_tun(tun_writer))
+                .map_err(|error| format!("failed to start udp-to-tun worker: {error}"))?;
+
+            workers.push(("udp-to-tun", handle));
         }
 
         {
             let tunnel = Arc::clone(&tunnel);
 
-            thread::spawn(move || {
-                tunnel.timer_loop();
-            });
+            let handle = thread::Builder::new()
+                .name("timer".into())
+                .spawn(move || tunnel.timer_loop())
+                .map_err(|error| format!("failed to start timer worker: {error}"))?;
+
+            workers.push(("timer", handle));
         }
 
-        tunnel.tun_to_udp(tun_reader);
+        {
+            let handle = thread::Builder::new()
+                .name("tun-to-udp".into())
+                .spawn(move || tunnel.tun_to_udp(tun_reader))
+                .map_err(|error| format!("failed to start tun-to-udp worker: {error}"))?;
+
+            workers.push(("tun-to-udp", handle));
+        }
+
+        loop {
+            if let Some(index) = workers.iter().position(|(_, handle)| handle.is_finished()) {
+                let (name, handle) = workers.swap_remove(index);
+
+                return match handle.join() {
+                    Ok(()) => Err(format!("{name} worker exited unexpectedly")),
+                    Err(payload) => Err(format!(
+                        "{name} worker panicked: {}",
+                        panic_message(payload.as_ref())
+                    )),
+                };
+            }
+
+            thread::sleep(Duration::from_millis(100));
+        }
     }
 
     fn tun_to_udp(&self, reader: Reader) {
@@ -206,4 +236,12 @@ fn is_cookie_challenge(packet: &[u8], result: &TunnResult<'_>) -> bool {
 
     packet.starts_with(&HANDSHAKE_INIT_TYPE)
         && matches!(result, TunnResult::WriteToNetwork(buf) if buf.len() == COOKIE_REPLY_SIZE)
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
+    payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .unwrap_or("unknown panic payload")
 }

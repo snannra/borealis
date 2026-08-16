@@ -28,5 +28,8 @@ fn main() {
 
     let tunnel = Tunnel::new(tunn, socket, peer);
 
-    tunnel.run(tun_reader, tun_writer);
+    if let Err(error) = tunnel.run(tun_reader, tun_writer) {
+        eprintln!("tunnel stopped: {error}");
+        std::process::exit(1);
+    }
 }
