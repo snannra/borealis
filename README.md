@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/borealis-icon.svg" width="160" alt="Borealis logo">
+
 # Borealis
 
 **An experimental point-to-point WireGuard tunnel built in Rust with BoringTun.**

@@ -1,0 +1,64 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 512 512"
+  role="img"
+  aria-labelledby="title description"
+>
+  <title id="title">Borealis</title>
+  <desc id="description">
+    Two network nodes connected by an aurora-shaped tunnel
+  </desc>
+
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#071426" />
+      <stop offset="100%" stop-color="#101A3A" />
+    </linearGradient>
+
+    <!-- Horizontal gradient spanning the node-to-node width -->
+    <linearGradient
+      id="aurora"
+      gradientUnits="userSpaceOnUse"
+      x1="112"
+      y1="256"
+      x2="400"
+      y2="256"
+    >
+      <stop offset="0%" stop-color="#22D3EE" />
+      <stop offset="35%" stop-color="#2DD4BF" />
+      <stop offset="60%" stop-color="#86EFAC" />
+      <stop offset="82%" stop-color="#C084FC" />
+      <stop offset="100%" stop-color="#8B5CF6" />
+    </linearGradient>
+
+    <!-- Softer, subtler glow -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="url(#background)" />
+
+  <!-- Aurora tunnel -->
+  <path
+    d="M112 326 C166 326 174 172 256 172 C338 172 346 326 400 326"
+    fill="none"
+    stroke="url(#aurora)"
+    stroke-width="30"
+    stroke-linecap="round"
+    filter="url(#glow)"
+  />
+
+  <!-- Network nodes -->
+  <circle cx="112" cy="326" r="38" fill="#071426" stroke="#5EE6D8" stroke-width="18" />
+  <circle cx="400" cy="326" r="38" fill="#071426" stroke="#C4A5F0" stroke-width="18" />
+
+  <!-- Node centers -->
+  <circle cx="112" cy="326" r="9" fill="#E6FFFB" />
+  <circle cx="400" cy="326" r="9" fill="#F5F3FF" />
+</svg>
