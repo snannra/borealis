@@ -4,7 +4,10 @@ mod heartbeat;
 mod peers;
 mod register;
 
-use axum::{Router, routing::post};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
@@ -19,6 +22,8 @@ async fn main() {
 
     let router = Router::new()
         .route("/v1/nodes/register", post(register::register))
+        .route("/v1/nodes/{node_id}/heartbeat", post(heartbeat::heartbeat))
+        .route("/v1/nodes/{node_id}/peers", get(peers::network_map))
         .with_state(state);
 
     axum::serve(
