@@ -116,8 +116,9 @@ Routing outside this directly connected tunnel network is not configured by Bore
 | --- | --- | --- |
 | `COORDINATOR_URL` | Yes | Base HTTP URL of the coordination service. |
 | `BOREALIS_KEY_PATH` | No | Persistent identity path; defaults to `.borealis.key`. |
+| `BIND_SOCKET` | No | UDP bind address; defaults to `0.0.0.0:0`. Use a fixed port for a publicly reachable peer. |
 
-The UDP transport currently binds automatically to `0.0.0.0:0`. The TUN interface uses an MTU of 1420 and an IPv4 `/24` netmask. BoringTun is initialized without a preshared key or rate limiter.
+The UDP transport defaults to `0.0.0.0:0`, allowing the OS to select a port. A publicly reachable peer can use a stable address such as `0.0.0.0:41802` so its firewall configuration and discovered endpoint survive process restarts. The TUN interface uses an MTU of 1420 and an IPv4 `/24` netmask. BoringTun is initialized without a preshared key or rate limiter.
 
 ## Runtime logs
 

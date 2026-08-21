@@ -11,7 +11,6 @@ use config::NodeConfig;
 use coordinator::CoordinatorClient;
 use identity::Identity;
 use peer::PeerEndpoint;
-use std::net::{Ipv4Addr, SocketAddr};
 use tunnel::Tunnel;
 
 fn main() {
@@ -28,7 +27,7 @@ fn main() {
 
     let identity = Identity::load_or_generate(&config.key_path)
         .unwrap_or_else(|error| panic!("failed to initialize node identity: {error}"));
-    let socket = transport::bind_udp(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)));
+    let socket = transport::bind_udp(config.bind_socket);
     let listen_port = socket
         .local_addr()
         .expect("failed to read UDP listen address")

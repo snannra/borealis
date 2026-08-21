@@ -1,8 +1,10 @@
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 
 pub struct NodeConfig {
     pub coordinator_url: String,
     pub key_path: PathBuf,
+    pub bind_socket: SocketAddr,
 }
 
 impl NodeConfig {
@@ -22,9 +24,18 @@ impl NodeConfig {
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(".borealis.key"));
 
+        let bind_socket = std::env::var("BIND_SOCKET")
+            .map(|value| {
+                value
+                    .parse::<SocketAddr>()
+                    .expect("BIND_SOCKET must be a socket address")
+            })
+            .unwrap_or_else(|_| SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)));
+
         Self {
             coordinator_url,
             key_path,
+            bind_socket,
         }
     }
 }
