@@ -13,30 +13,33 @@
 
 </div>
 
-Borealis creates a TUN interface, encrypts its IP traffic with [BoringTun](https://github.com/cloudflare/boringtun), and transports the resulting WireGuard packets over UDP. It is designed around a local machine behind NAT connecting to a publicly reachable server that learns the local machine's translated endpoint.
+Borealis creates a TUN interface, encrypts its IP traffic with [BoringTun](https://github.com/cloudflare/boringtun), and transports the resulting WireGuard packets over UDP. A coordination service registers nodes, allocates overlay addresses, maintains leases, and introduces the two tunnel peers.
 
 > [!WARNING]
-> Borealis is an early-stage learning project, not a production VPN. It currently uses panic-based error handling, has no automated tests, and learns peer endpoints before authenticating incoming packets.
+> Borealis is an early-stage learning project, not a production VPN. It currently uses panic-based error handling, has no automated tests, and supports exactly two active nodes in one global network.
 
 ## Overview
 
 - Userspace WireGuard handshake, encryption, and timers through BoringTun
-- IPv4 TUN addresses `10.0.0.9` and `10.0.0.10`
-- NAT-friendly local endpoint using an OS-assigned UDP port
-- Learned remote endpoint on the publicly reachable node
+- Coordinator-assigned IPv4 TUN addresses from `10.0.0.2` through `10.0.0.254`
+- Persistent, locally generated X25519 node identities
+- Coordinator-provided peer keys and observed endpoints
+- Five-minute registrations renewed by periodic heartbeats
 - Persistent keepalive every 25 seconds
 - Synchronous three-loop architecture using standard Rust threads
 
-The current topology expects one stable, reachable node:
+The current topology connects two coordinator-discovered nodes:
 
 ```text
-Local machine behind NAT                       Public server
-10.0.0.9                                      10.0.0.10
-UDP 0.0.0.0:0                                 UDP 0.0.0.0:41802
-configured server endpoint  ────────────────> learns local NAT endpoint
+Node A                    Coordinator                    Node B
+  │ register key + port ──────┤                            │
+  │                           ├────── register key + port ◀─┤
+  │◀──── assigned IP + peer endpoint/key ──────────────────▶│
+  │                                                        │
+  └──────────────── encrypted UDP tunnel ──────────────────┘
 ```
 
-Two dynamic peers cannot discover one another without a stable endpoint, port forwarding, or a separate rendezvous service. Borealis uses the public server as that stable endpoint.
+The coordinator observes each node's HTTP source IP and combines it with the UDP port advertised by that node. This is discovery, not complete NAT traversal: a translated UDP port may differ from the local port, and at least one reachable endpoint or a later UDP rendezvous mechanism may still be required.
 
 ## How it works
 
@@ -70,16 +73,8 @@ Local   -> Server   encrypted transport packets
 - Linux with TUN/TAP support (`/dev/net/tun`)
 - A recent Rust toolchain with Rust 2024 edition support
 - Root access or the capabilities required to create and configure a TUN device
-- One publicly reachable machine with a stable UDP port
-- Matching X25519 keypairs for the two peers
-
-The server firewall must allow the UDP port used by `BIND_SOCKET`. For the examples below:
-
-```bash
-sudo ufw allow 41802/udp
-```
-
-If your provider also has a cloud firewall, allow the same UDP port there.
+- A running Borealis coordinator and PostgreSQL database
+- Network paths that permit the nodes' selected UDP ports
 
 ## Getting started
 
@@ -89,78 +84,40 @@ If your provider also has a cloud firewall, allow the same UDP port there.
 cargo build
 ```
 
-### 2. Prepare keys
-
-Each peer needs:
-
-- its own 32-byte X25519 private key;
-- the other peer's corresponding 32-byte public key.
-
-Borealis currently accepts keys as JSON arrays of exactly 32 byte values.
-
-> [!CAUTION]
-> Never commit `.env` files or share private keys. If a private key is exposed, rotate that keypair and update the other peer's `PEER_PUBLIC_KEY`.
-
-### 3. Configure the local machine
+### 2. Configure each node
 
 Create `.env` in the repository root:
 
 ```dotenv
-NODE=0
-BIND_SOCKET="0.0.0.0:0"
-PEER_SOCKET="<server-public-ip>:41802"
-PRIVATE_KEY="[<32 private-key bytes>]"
-PEER_PUBLIC_KEY="[<32 server-public-key bytes>]"
+COORDINATOR_URL="http://<coordinator-host>:8080"
 ```
 
-Port `0` asks the OS to choose an available local UDP port. NAT may translate it again; the server replies to the endpoint observed on the incoming handshake.
+On first start, each node generates `.borealis.key` with owner-only permissions. Keep this file private and persistent: deleting it creates a new node identity. Set `BOREALIS_KEY_PATH` only when the identity should be stored elsewhere.
 
-### 4. Configure the public server
+### 3. Run both peers
 
-Create `.env` in the server checkout:
-
-```dotenv
-NODE=1
-BIND_SOCKET="0.0.0.0:41802"
-PRIVATE_KEY="[<32 private-key bytes>]"
-PEER_PUBLIC_KEY="[<32 local-public-key bytes>]"
-```
-
-Do not set `PEER_SOCKET` on the server. It starts without a known local endpoint and learns one after receiving local traffic. Omit the variable entirely—an empty value is not a valid socket address.
-
-### 5. Run both peers
-
-Start the server first:
+Start Borealis on both nodes:
 
 ```bash
 sudo cargo run
 ```
 
-Then start the local peer:
+The first node registers and waits while continuing to renew its lease. Once the second node registers, both receive their coordinator-assigned addresses. Generate traffic toward the peer address shown in the logs:
 
 ```bash
-sudo cargo run
+ping <peer-overlay-ip>
 ```
 
-Generate traffic toward the server's tunnel address:
-
-```bash
-ping 10.0.0.10
-```
-
-The local tunnel address is `10.0.0.9`; the server tunnel address is `10.0.0.10`. Routing outside this directly connected tunnel network is not configured by Borealis.
+Routing outside this directly connected tunnel network is not configured by Borealis.
 
 ## Configuration
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `NODE` | Yes | `0` assigns `10.0.0.9`; any other integer assigns `10.0.0.10`. |
-| `BIND_SOCKET` | Yes | Local UDP bind address. Use `0.0.0.0:0` locally or a stable port on the server. |
-| `PEER_SOCKET` | Local only | Initial remote UDP endpoint. Omit it on the endpoint-learning server. |
-| `PRIVATE_KEY` | Yes | Own X25519 private key as a JSON array of 32 bytes. |
-| `PEER_PUBLIC_KEY` | Yes | Other peer's X25519 public key as a JSON array of 32 bytes. |
+| `COORDINATOR_URL` | Yes | Base HTTP URL of the coordination service. |
+| `BOREALIS_KEY_PATH` | No | Persistent identity path; defaults to `.borealis.key`. |
 
-The TUN interface uses an MTU of 1420 and an IPv4 `/24` netmask. BoringTun is initialized without a preshared key or rate limiter.
+The UDP transport currently binds automatically to `0.0.0.0:0`. The TUN interface uses an MTU of 1420 and an IPv4 `/24` netmask. BoringTun is initialized without a preshared key or rate limiter.
 
 ## Runtime logs
 
@@ -184,14 +141,14 @@ Check each network boundary independently:
 
 ```bash
 # Does traffic reach the server interface?
-sudo tcpdump -ni any 'udp dst port 41802'
+sudo tcpdump -ni any 'udp port <selected-port>'
 
 # Is Borealis listening on the expected port?
-sudo ss -lunp | grep 41802
+sudo ss -lunp
 
 # Does the host firewall allow that port?
 sudo ufw status verbose
-sudo ufw allow 41802/udp
+sudo ufw allow <selected-port>/udp
 ```
 
 `tcpdump` may observe a packet before the host firewall drops it. Therefore, seeing traffic on `eth0` does not prove that Borealis's UDP socket received it.
@@ -200,14 +157,14 @@ sudo ufw allow 41802/udp
 
 Repeated 148-byte timer packets mean BoringTun is retrying an unanswered handshake. Verify:
 
-- the server IP and UDP port;
+- the coordinator-provided peer IP and UDP port;
 - host and cloud firewall rules;
-- that each `PEER_PUBLIC_KEY` belongs to the other peer's private key;
+- that both nodes retained their generated identity files;
 - that both peers are running the same current build.
 
 ### Packets reach TUN but receive no reply
 
-Send traffic to the configured peer address. The server owns `10.0.0.10`, not arbitrary addresses in the `/24`. A packet for another address may cross the tunnel successfully but receive no response unless the server owns or routes that address.
+Send traffic to the peer overlay address reported in the discovery log, not an arbitrary address in the `/24`. Borealis does not configure routing for unassigned addresses.
 
 ## Project structure
 
@@ -216,29 +173,31 @@ crates/
 ├── node/                    Existing tunnel node application
 │   └── src/
 │       ├── main.rs          Application composition and startup
-│       ├── config.rs        Environment configuration and tunnel addressing
+│       ├── config.rs        Coordinator and identity-path configuration
+│       ├── coordinator.rs   Registration, lease, and peer discovery client
+│       ├── identity.rs      Persistent X25519 node identity
 │       ├── peer.rs          Mutable peer endpoint state
 │       ├── transport.rs     UDP socket binding
 │       ├── tun_device.rs    TUN interface creation
 │       └── tunnel.rs        Packet processing and protocol timer loops
-└── protocol/                Shared control-plane contract (scaffold)
+└── protocol/                Shared control-plane HTTP contract
     └── src/lib.rs
 services/
-└── coordinator/             Independently runnable coordination service
-    ├── migrations/          Future PostgreSQL migrations
+└── coordinator/             PostgreSQL-backed coordination service
+    ├── migrations/          Coordinator database schema
     └── src/main.rs
 ```
 
 The root is a Cargo workspace. `cargo run` continues to run the node through
-the workspace's default member. Run the coordinator scaffold independently
+the workspace's default member. Run the coordinator independently
 with `cargo run -p borealis-coordinator`.
 
 ## Current limitations
 
 - Linux-oriented and dependent on privileged TUN creation
-- Exactly one peer and fixed tunnel addresses
+- Exactly one peer in one global coordinator-managed network
 - No route, DNS, forwarding, or cleanup management
-- No CLI, key-generation utility, tests, or graceful shutdown
+- No CLI, automated tests, or graceful shutdown
 - IPv6 packets are processed even though only IPv4 tunnel addresses are configured
 - Most runtime failures panic instead of recovering cleanly
 - Incoming source addresses update the learned endpoint before packet authentication

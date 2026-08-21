@@ -1,27 +1,14 @@
 use crate::app_state::AppState;
 use axum::extract::{ConnectInfo, Json, State};
 use axum::http::StatusCode;
+use borealis_protocol::{RegisterNodeRequest, RegisterNodeResponse};
 use chrono::{DateTime, Duration, Utc};
-use serde::{Deserialize, Serialize};
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 
 const LEASE_DURATION_MINUTES: i64 = 5;
 
 // Serializes address selection across coordinator instances using the same DB.
 const OVERLAY_ALLOCATION_LOCK_ID: i64 = 4_778_961_177_345_337;
-
-#[derive(Debug, Serialize)]
-pub struct RegisterNodeResponse {
-    pub node_id: i64,
-    pub overlay_ip: Ipv4Addr,
-    pub lease_expires_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RegisterNodeRequest {
-    pub public_key: [u8; 32],
-    pub listen_port: u16,
-}
 
 pub async fn register(
     State(state): State<AppState>,

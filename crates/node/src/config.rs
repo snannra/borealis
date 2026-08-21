@@ -1,68 +1,30 @@
-use std::net::{Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 
-pub struct DeviceConfig {
-    pub node: u32,
-    pub bind_socket: SocketAddr,
-    pub peer_socket: Option<SocketAddr>,
-    pub tunnel_ip: Ipv4Addr,
-    pub private_key: [u8; 32],
-    pub peer_public_key: [u8; 32],
+pub struct NodeConfig {
+    pub coordinator_url: String,
+    pub key_path: PathBuf,
 }
 
-impl DeviceConfig {
+impl NodeConfig {
     pub fn from_env() -> Self {
         dotenvy::dotenv().ok();
 
-        let node = std::env::var("NODE")
-            .expect("NODE missing")
-            .parse::<u32>()
-            .expect("NODE must be integer");
+        let coordinator_url = std::env::var("COORDINATOR_URL")
+            .expect("COORDINATOR_URL missing")
+            .trim_end_matches('/')
+            .to_owned();
 
-        let bind_socket = std::env::var("BIND_SOCKET")
-            .expect("PUBLIC_IP missing")
-            .parse::<SocketAddr>()
-            .expect("PUBLIC_IP must be socket addr");
+        if coordinator_url.is_empty() {
+            panic!("COORDINATOR_URL must not be empty");
+        }
 
-        let peer_socket = match std::env::var("PEER_SOCKET") {
-            Ok(sock_val) => {
-                let peer_sock = sock_val
-                    .parse::<SocketAddr>()
-                    .expect("PEER_SOCKET must be socket addr");
-                Some(peer_sock)
-            }
-            Err(_) => None,
-        };
-
-        let private: Vec<u8> =
-            serde_json::from_str(&std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY missing"))
-                .expect("invalid PRIVATE_KEY");
-
-        let private_key: [u8; 32] = private
-            .try_into()
-            .expect("PRIVATE_KEY must contain 32 bytes");
-
-        let peer_public: Vec<u8> = serde_json::from_str(
-            &std::env::var("PEER_PUBLIC_KEY").expect("PEER_PUBLIC_KEY missing"),
-        )
-        .expect("invalid PEER_PUBLIC_KEY");
-
-        let peer_public_key: [u8; 32] = peer_public
-            .try_into()
-            .expect("PEER_PUBLIC_KEY must contain 32 bytes");
-
-        let tunnel_ip = if node == 0 {
-            Ipv4Addr::new(10, 0, 0, 9)
-        } else {
-            Ipv4Addr::new(10, 0, 0, 10)
-        };
+        let key_path = std::env::var_os("BOREALIS_KEY_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(".borealis.key"));
 
         Self {
-            node,
-            bind_socket,
-            peer_socket,
-            tunnel_ip,
-            private_key,
-            peer_public_key,
+            coordinator_url,
+            key_path,
         }
     }
 }

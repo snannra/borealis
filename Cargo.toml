@@ -17,6 +17,7 @@ boringtun = "0.7.1"
 chrono = { version = "0.4.45", features = ["serde"] }
 dotenvy = "0.15.7"
 getrandom = "0.4.3"
+reqwest = { version = "0.12.23", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tracing = "0.1.44"

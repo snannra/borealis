@@ -6,6 +6,19 @@ use serde::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, SocketAddr};
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct RegisterNodeRequest {
+    pub public_key: [u8; 32],
+    pub listen_port: u16,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RegisterNodeResponse {
+    pub node_id: i64,
+    pub overlay_ip: Ipv4Addr,
+    pub lease_expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct PeerInfo {
     pub node_id: i64,
     pub public_key: [u8; 32],
